@@ -2,12 +2,20 @@ import numpy as np
 import torch as pt
 
 from .structure_io import read_pdb
-from .structure import clean_structure, tag_hetatm_chains, split_by_chain, filter_non_atomic_subunits, chain_name_to_index, remove_duplicate_tagged_subunits, concatenate_chains
+from .structure import (
+    clean_structure,
+    tag_hetatm_chains,
+    split_by_chain,
+    filter_non_atomic_subunits,
+    chain_name_to_index,
+    remove_duplicate_tagged_subunits,
+    concatenate_chains,
+)
 
 
 def select_by_sid(dataset, sids_sel):
     # extract sids of dataset
-    sids = np.array(['_'.join([s.split(':')[0] for s in key.split('/')[1::2]]) for key in dataset.keys])
+    sids = np.array(["_".join([s.split(":")[0] for s in key.split("/")[1::2]]) for key in dataset.keys])
 
     # create selection mask
     m = np.isin(sids, sids_sel)
@@ -17,10 +25,10 @@ def select_by_sid(dataset, sids_sel):
 
 def select_by_max_ba(dataset, max_ba):
     # extract aids of dataset
-    aids = np.array([int(key.split('/')[2]) for key in dataset.keys])
+    aids = np.array([int(key.split("/")[2]) for key in dataset.keys])
 
     # create selection mask
-    m = (aids <= max_ba)
+    m = aids <= max_ba
 
     return m
 
@@ -39,22 +47,22 @@ def select_by_interface_types(dataset, l_types, r_types):
     t1 = np.where(np.isin(dataset.mids, r_types))[0]
 
     # ctypes selection mask
-    cm = (np.isin(dataset.ctypes[:,1], t0) & np.isin(dataset.ctypes[:,2], t1))
+    cm = np.isin(dataset.ctypes[:, 1], t0) & np.isin(dataset.ctypes[:, 2], t1)
 
     # apply selection on dataset
-    m = np.isin(np.arange(dataset.keys.shape[0]), dataset.ctypes[cm,0])
+    m = np.isin(np.arange(dataset.keys.shape[0]), dataset.ctypes[cm, 0])
 
     return m
 
 
 def load_sparse_mask(hgrp, k):
     # get shape
-    shape = tuple(hgrp.attrs[k+'_shape'])
+    shape = tuple(hgrp.attrs[k + "_shape"])
 
     # create map
     M = pt.zeros(shape, dtype=pt.float)
     ids = pt.from_numpy(np.array(hgrp[k]).astype(np.int64))
-    M.scatter_(1, ids[:,1:], 1.0)
+    M.scatter_(1, ids[:, 1:], 1.0)
 
     return M
 
@@ -102,12 +110,12 @@ def collate_batch_features(batch_data, max_num_nn=64):
     for size, data in zip(pt.cumsum(sizes, dim=0), batch_data):
         # get indices of slice location
         ix1 = size[0]
-        ix0 = ix1-data[3].shape[0]
+        ix0 = ix1 - data[3].shape[0]
         iy1 = size[1]
-        iy0 = iy1-data[3].shape[1]
+        iy0 = iy1 - data[3].shape[1]
         # store data
-        ids_topk[ix0:ix1, :data[1].shape[1]] = data[1]+ix0+1
-        M[ix0:ix1,iy0:iy1] = data[3]
+        ids_topk[ix0:ix1, : data[1].shape[1]] = data[1] + ix0 + 1
+        M[ix0:ix1, iy0:iy1] = data[3]
 
     return X, ids_topk, q, M
 
