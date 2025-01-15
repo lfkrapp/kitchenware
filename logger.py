@@ -47,7 +47,7 @@ class Logger:
 
         # update log file
         with open(self.log_lst_filepath, "a") as fs:
-            fs.write(s.to_json() + "\n")
+            fs.write(f"{s.to_json()}\n")
 
     def print_profiling_info(self, n_curr, n_step, n_total):
         dt = time() - self.t0

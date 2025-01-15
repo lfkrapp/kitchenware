@@ -1,40 +1,19 @@
 import numpy as np
+import torch as pt
+import numpy.typing as npt
 
-from .data_encoding import std_aminoacids, std_backbone, std_resnames
-
-
-# resname convergion (37)
-res3to1 = {
-    "CYS": "C",
-    "ASP": "D",
-    "SER": "S",
-    "GLN": "Q",
-    "LYS": "K",
-    "ILE": "I",
-    "PRO": "P",
-    "THR": "T",
-    "PHE": "F",
-    "ASN": "N",
-    "GLY": "G",
-    "HIS": "H",
-    "LEU": "L",
-    "ARG": "R",
-    "TRP": "W",
-    "ALA": "A",
-    "VAL": "V",
-    "GLU": "E",
-    "TYR": "Y",
-    "MET": "M",
-}
-res1to3 = {v: k for k, v in res3to1.items()}
+from .dev import Structure
+from .standard_encoding import std_aminoacids, std_backbone, res3to1
+from .structure_io import read_structure as read_pdb
+from .geometry import locate_contacts
 
 
-def clean_structure(structure, rm_hetatm=False, rm_wat=True):
+def clean_structure(structure: Structure, rm_hetatm=False, rm_wat=True):
     # mask for water, hydrogens and deuterium
-    m_wat = structure["resname"] == "HOH"
-    m_h = structure["element"] == "H"
-    m_d = structure["element"] == "D"
-    m_hwat = structure["resname"] == "DOD"
+    m_wat = structure.resnames == "HOH"
+    m_h = structure.elements == "H"
+    m_d = structure.elements == "D"
+    m_hwat = structure.elements == "DOD"
 
     if rm_wat:
         # remove water
@@ -42,70 +21,66 @@ def clean_structure(structure, rm_hetatm=False, rm_wat=True):
     else:
         # keep but tag water
         mask = (~m_h) & (~m_d) & (~m_hwat)
-        structure["resid"][m_wat] = -999
+        structure.resids[m_wat] = -999
 
     if rm_hetatm:
         # remove hetatm
-        mask &= structure["het_flag"] == "A"
+        mask &= structure.het_flags == "A"
 
     # filter structure atoms
-    structure = {key: structure[key][mask] for key in structure}
+    for key in structure:
+        structure[key] = structure[key][mask]
 
     # find changes due to chain
-    chains = structure["chain_name"]
+    chains = structure.chain_names
     ids_chains = np.where(np.array(chains).reshape(-1, 1) == np.unique(chains).reshape(1, -1))[1]
     delta_chains = np.abs(np.sign(np.concatenate([[0], np.diff(ids_chains)])))
 
     # find changes due to inertion code
-    icodes = structure["icode"]
+    icodes = structure.icodes
     ids_icodes = np.where(np.array(icodes).reshape(-1, 1) == np.unique(icodes).reshape(1, -1))[1]
     delta_icodes = np.abs(np.sign(np.concatenate([[0], np.diff(ids_icodes)])))
 
     # find changes due to resids
-    resids = structure["resid"]
+    resids = structure.resids
     delta_resids = np.abs(np.sign(np.concatenate([[0], np.diff(resids)])))
 
     # renumber resids
     resids = np.cumsum(np.sign(delta_chains + delta_resids + delta_icodes)) + 1
 
     # update resids
-    structure["resid"] = resids
-
-    # remove uncessary icodes
-    structure.pop("icode")
+    structure.resids = resids
 
     # return process structure
     return structure
 
 
-def atom_select(structure, sel):
-    return {key: structure[key][sel] for key in structure}
+def atom_select(structure: Structure, sel) -> Structure:
+    return Structure(**{key: structure[key][sel] for key in structure})
 
 
-def split_by_chain(structure):
-    # define storage
-    chains = {}
-
+def split_by_chain(structure: Structure) -> dict[str, Structure]:
     # define mask for chains
-    cnames = structure["chain_name"]
+    cnames = structure.chain_names
     ucnames = np.unique(cnames)
     m_chains = cnames.reshape(-1, 1) == np.unique(cnames).reshape(1, -1)
 
     # find all interfaces in biounit
+    chains: dict[str, Structure] = {}
     for i in range(len(ucnames)):
         # get chain
         chain = atom_select(structure, m_chains[:, i])
-        chain.pop("chain_name")
+
         # store chain data
         chains[ucnames[i]] = chain
 
     return chains
 
 
-def extract_backbone(structure):
+def extract_backbone(structure: Structure) -> Structure:
     # amino-acids and backbone masks
-    m_aa = np.isin(structure["resname"], std_aminoacids)
-    m_bb = np.isin(structure["name"], std_backbone)
+    m_aa = np.isin(structure.resnames, std_aminoacids)
+    m_bb = np.isin(structure.names, std_backbone)
 
     # mask (backbone & polymer residue) or (not polymer residue)
     m = (~m_aa) | (m_aa & m_bb)
@@ -113,98 +88,91 @@ def extract_backbone(structure):
     return atom_select(structure, m)
 
 
-def split_by_residue(subunit):
-    return [atom_select(subunit, subunit["resid"] == i) for i in np.unique(subunit["resid"])]
+def split_by_residue(subunit: Structure) -> list[Structure]:
+    return [atom_select(subunit, subunit.resids == i) for i in np.unique(subunit.resids)]
 
 
-def subunit_to_sequence(subunit):
-    return "".join([res3to1[res["resname"][0]] for res in split_by_residue(subunit) if res["resname"][0] in res3to1])
+def subunit_to_sequence(subunit: Structure):
+    return "".join([res3to1[res.resnames[0]] for res in split_by_residue(subunit) if res.resnames[0] in res3to1])
 
 
-def concatenate_chains(chains):
+def concatenate_chains(subunits: dict[str, Structure]) -> Structure:
     # get intersection of keys between chains
-    keys = set.intersection(*[set(chains[cid]) for cid in chains])
+    keys = set.intersection(*[set(subunits[cid]) for cid in subunits])
 
-    # concatenate chains
-    structure = {key: np.concatenate([chains[cid][key] for cid in chains]) for key in keys}
-
-    # add chain information
-    structure["chain_name"] = np.concatenate([np.array([cid] * chains[cid]["xyz"].shape[0]) for cid in chains])
+    # concatenate subunits
+    structure = Structure(**{key: np.concatenate([subunits[cid][key] for cid in subunits]) for key in keys})
 
     return structure
 
 
-def tag_hetatm_chains(structure):
+def tag_hetatm_chains(structure: Structure):
     # get hetatm
-    m_hetatm = structure["het_flag"] == "H"
-    resids_hetatm = structure["resid"][m_hetatm]
+    m_hetatm = structure.het_flags == "H"
+    resids_hetatm = structure.resids[m_hetatm]
 
     # split if multiple hetatm
     delta_hetatm = np.cumsum(np.abs(np.sign(np.concatenate([[0], np.diff(resids_hetatm)]))))
 
     # update chain name
-    cids_hetatm = np.array([f"{cid}:{hid}" for cid, hid in zip(structure["chain_name"][m_hetatm], delta_hetatm)])
-    cids = structure["chain_name"].copy().astype(np.dtype("<U10"))
+    cids_hetatm = np.array([f"{cid}:{hid}" for cid, hid in zip(structure.chain_names[m_hetatm], delta_hetatm)])
+    cids = structure.chain_names.copy().astype(np.dtype("<U10"))
     cids[m_hetatm] = cids_hetatm
-    structure["chain_name"] = np.array(list(cids)).astype(str)
+    structure.chain_names = np.array(list(cids)).astype(str)
 
     return structure
 
 
-def chain_name_to_index(structure):
+def chain_name_to_index(structure: Structure) -> npt.NDArray[int]:
     # get chain names
-    cnames = structure["chain_name"]
+    cnames = structure.chain_names
 
     # convert it to index
-    structure["cid"] = np.where(cnames.reshape(-1, 1) == np.unique(cnames).reshape(1, -1))[1]
+    cids = np.where(cnames.reshape(-1, 1) == np.unique(cnames).reshape(1, -1))[1]
 
-    return structure
-
-
-def remove_duplicate_tagged_subunits(subunits):
-    # located tagged subunits
-    tagged_cids = [cid for cid in subunits if (len(cid.split(":")) == 3)]
-    # remove if overlapping
-    for i in range(len(tagged_cids)):
-        cid_i = tagged_cids[i]
-        for j in range(i + 1, len(tagged_cids)):
-            cid_j = tagged_cids[j]
-
-            # check if still existing
-            if (cid_i in subunits) and (cid_j in subunits):
-                # extract distances
-                xyz0 = subunits[cid_i]["xyz"]
-                xyz1 = subunits[cid_j]["xyz"]
-
-                # if same size
-                if xyz0.shape[0] == xyz1.shape[0]:
-                    # minimum self distances
-                    d_min = np.min(np.linalg.norm(xyz0 - xyz1, axis=1))
-                    if d_min < 0.2:
-                        subunits.pop(cid_j)
-
-    return subunits
+    return cids
 
 
-def filter_non_atomic_subunits(subunits):
-    for sname in list(subunits):
-        # n_res = np.unique(subunits[sname]['resid']).shape[0]
-        # n_atm = subunits[sname]['xyz'].shape[0]
+def extract_all_contacts(subunits, r_thr, device=pt.device("cpu")):
+    # get subunits names
+    snames = list(subunits)
 
-        # if (n_atm == n_res) & (n_atm > 1):
-        #     subunits.pop(sname)
+    # extract interfaces
+    contacts_dict = {}
+    for i in range(len(snames)):
+        # current selection chain
+        cid_i = snames[i]
 
-        n_atm = subunits[sname]["xyz"].shape[0]
-        resids = subunits[sname]["resid"]
-        nmin_res = np.min([np.sum(resids == rid) for rid in np.unique(resids)])
+        for j in range(i + 1, len(snames)):
+            # current selection chain
+            cid_j = snames[j]
 
-        if (nmin_res == 1) & (n_atm > 1):
-            subunits.pop(sname)
+            # find contacts
+            ids_i, ids_j, d_ij = (
+                out.cpu()
+                for out in locate_contacts(
+                    pt.from_numpy(subunits[cid_i].xyz).to(device),
+                    pt.from_numpy(subunits[cid_j].xyz).to(device),
+                    r_thr,
+                )
+            )
 
-    return subunits
+            # insert contacts
+            if (ids_i.shape[0] > 0) and (ids_j.shape[0] > 0):
+                if f"{cid_i}" in contacts_dict:
+                    contacts_dict[f"{cid_i}"].update({f"{cid_j}": {"ids": pt.stack([ids_i, ids_j], dim=1), "d": d_ij}})
+                else:
+                    contacts_dict[f"{cid_i}"] = {f"{cid_j}": {"ids": pt.stack([ids_i, ids_j], dim=1), "d": d_ij}}
+
+                if f"{cid_j}" in contacts_dict:
+                    contacts_dict[f"{cid_j}"].update({f"{cid_i}": {"ids": pt.stack([ids_j, ids_i], dim=1), "d": d_ij}})
+                else:
+                    contacts_dict[f"{cid_j}"] = {f"{cid_i}": {"ids": pt.stack([ids_j, ids_i], dim=1), "d": d_ij}}
+
+    return contacts_dict
 
 
-def data_to_structure(X, q, Mr, Mc, std_elements, std_resnames, std_names):
+def data_to_structure(X, q, Mr, Mc, std_elements, std_resnames, std_names) -> Structure:
     # q = [qe, qr, qn]
     # resnames
     resnames_enum = np.concatenate([std_resnames, [b"UNX"]])
@@ -223,7 +191,7 @@ def data_to_structure(X, q, Mr, Mc, std_elements, std_resnames, std_names):
 
     # resids
     ids0, ids1 = np.where(Mr > 0.5)
-    resids = np.zeros(Mr.shape[0], dtype=np.int64)
+    resids = np.zeros(Mr.shape[0], dtype=np.int32)
     resids[ids0] = ids1 + 1
 
     # chains
@@ -235,26 +203,28 @@ def data_to_structure(X, q, Mr, Mc, std_elements, std_resnames, std_names):
     het_flags = np.array(["H" if rn == "UNX" else "A" for rn in resnames])
 
     # pack subunit struct
-    return {
-        "xyz": X,
-        "name": names,
-        "element": elements,
-        "resname": resnames,
-        "resid": resids,
-        "chain_name": cids.astype(str),
-        "het_flag": het_flags,
-    }
+    return Structure(
+        xyz=X,
+        names=names,
+        elements=elements,
+        resnames=resnames,
+        resids=resids,
+        chain_names=cids.astype(str),
+        het_flags=het_flags,
+        icodes=np.array([""] * X.shape[0]),
+        bfactors=np.zeros(X.shape[0], dtype=np.float32),
+    )
 
 
-def encode_bfactor(structure, p):
+def encode_bfactor(structure: Structure, p):
     # C_alpha mask
-    names = structure["name"]
-    elements = structure["element"]
-    m_ca = (names == "CA") & (elements == "C") & (np.isin(structure["resname"], std_aminoacids))
-    resids = structure["resid"]
+    names = structure.names
+    elements = structure.elements
+    m_ca = (names == "CA") & (elements == "C") & (np.isin(structure.resnames, std_aminoacids))
+    resids = structure.resids
 
     if p.shape[0] == m_ca.shape[0]:
-        structure["bfactor"] = p
+        structure.bfactors = p
 
     elif p.shape[0] == np.sum(m_ca):
         # expand c_alpha bfactor to all
@@ -266,7 +236,7 @@ def encode_bfactor(structure, p):
                 bf[m_ri] = float(np.max(p[i_rca]))
 
         # store result
-        structure["bfactor"] = bf
+        structure.bfactors = bf
 
     elif p.shape[0] == np.unique(resids).shape[0]:
         # expand c_alpha bfactor to all
@@ -278,7 +248,7 @@ def encode_bfactor(structure, p):
             bf[m_ri] = float(np.max(p[m_uri]))
 
         # store result
-        structure["bfactor"] = bf
+        structure.bfactors = bf
 
     else:
         print("WARNING: bfactor not saved")
@@ -286,45 +256,27 @@ def encode_bfactor(structure, p):
     return structure
 
 
-def add_virtual_cb(structure):
-    # split structure by residue
-    residues = [atom_select(structure, structure["resid"] == i) for i in np.unique(structure["resid"])]
+def process_structure(structure: Structure, rm_hetatm=False, rm_wat=True) -> Structure:
+    # keep original resids
+    # structure["resid_orig"] = structure["resid"].copy()
 
-    # place virtual Cb using ideal angle and bond length (ref: ProteinMPNN)
-    for res in residues:
-        if (
-            (res["resname"][0] in std_resnames[:20])
-            and ("CA" in res["name"])
-            and ("N" in res["name"])
-            and ("C" in res["name"])
-        ):
-            # define vectors
-            b = res["xyz"][res["name"] == "CA"] - res["xyz"][res["name"] == "N"]
-            c = res["xyz"][res["name"] == "C"] - res["xyz"][res["name"] == "CA"]
-            a = np.cross(b, c)
+    # process structure
+    structure = clean_structure(structure, rm_hetatm=rm_hetatm, rm_wat=rm_wat)
 
-            if "CB" in res["name"]:
-                # update Cb coordinates
-                res["xyz"][res["name"] == "CB"] = (
-                    -0.58273431 * a + 0.56802827 * b - 0.54067466 * c + res["xyz"][res["name"] == "CA"]
-                )
-            else:
-                # insert virtual Cb (GLY)
-                virt_Cb = {
-                    "name": "CB",
-                    "bfactor": 0.0,
-                    "element": "C",
-                    "resname": "GLY",
-                    "xyz": (-0.58273431 * a + 0.56802827 * b - 0.54067466 * c + res["xyz"][res["name"] == "CA"])[0],
-                    "het_flag": "A",
-                }
-                for key in res:
-                    if key not in virt_Cb:
-                        virt_Cb[key] = res[key][-1]
+    # update molecules chains
+    structure = tag_hetatm_chains(structure)
 
-                # insert residue
-                for key in res:
-                    res[key] = np.concatenate([res[key], [virt_Cb[key]]])
+    # change chain name to chain index
+    # cids = chain_name_to_index(structure)
 
-    # pack residues back
-    return {key: np.concatenate([res[key] for res in residues]) for key in residues[0]}
+    return structure
+
+
+def load_structure(pdb_filepath, rm_hetatm=False, rm_wat=True) -> Structure:
+    # read structure
+    structure = read_pdb(pdb_filepath)
+
+    # process structure
+    structure = process_structure(structure, rm_hetatm=rm_hetatm, rm_wat=rm_wat)
+
+    return structure

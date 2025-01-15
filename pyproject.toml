@@ -1,2 +1,13 @@
+[project]
+name = "kitchenware"
+version = "0.1.0"
+description = ""
+authors = [
+    { name = "Lucien Krapp", email = "lucienkrapp@gmail.com" }
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
 [tool.ruff]
 line-length = 120

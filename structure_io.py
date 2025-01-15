@@ -2,10 +2,12 @@ import gemmi
 import numpy as np
 from gemmi import cif
 
+from .dev import Structure
 
-def read_pdb(pdb_filepath):
-    # read pdb
-    doc = gemmi.read_pdb(pdb_filepath, max_line_length=80)
+
+def read_structure(filepath: str) -> Structure:
+
+    doc = gemmi.read_structure(filepath)
 
     # altloc memory
     altloc_l = []
@@ -45,17 +47,17 @@ def read_pdb(pdb_filepath):
             bfactor.append(a.atom.b_iso)
 
     # pack data
-    return {
-        "xyz": np.array(atom_xyz, dtype=np.float32),
-        "name": np.array(atom_name),
-        "element": np.array(atom_element),
-        "resname": np.array(residue_name),
-        "resid": np.array(seq_id, dtype=np.int32),
-        "het_flag": np.array(het_flag),
-        "chain_name": np.array(chain_name),
-        "icode": np.array(icodes),
-        "bfactor": np.array(bfactor),
-    }
+    return Structure(
+        xyz=np.array(atom_xyz, dtype=np.float32),
+        names=np.array(atom_name),
+        elements=np.array(atom_element),
+        resnames=np.array(residue_name),
+        resids=np.array(seq_id, dtype=np.int32),
+        het_flags=np.array(het_flag),
+        chain_names=np.array(chain_name),
+        icodes=np.array(icodes),
+        bfactors=np.array(bfactor),
+    )
 
 
 def read_molecule_cif(filepath):

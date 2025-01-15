@@ -1,5 +1,4 @@
 import numpy as np
-import torch as pt
 import mrcfile as mf
 
 
