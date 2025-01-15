@@ -1,7 +1,7 @@
 import numpy as np
 
-from src.structure import split_by_residue
-from src.data_encoding import std_resnames, std_aminoacids, std_element_radii
+from .structure import split_by_residue
+from .standard_encoding import std_resnames, std_aminoacids, std_element_radii
 
 
 def initialize_residues(subunit, std_templates):
