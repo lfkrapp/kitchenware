@@ -1,31 +1,45 @@
 import torch as pt
 
-
-def superpose(xyz_ref, xyz):
-    # centering
-    t = pt.mean(xyz, dim=1).unsqueeze(1)
-    t_ref = pt.mean(xyz_ref, dim=1).unsqueeze(1)
-
-    # SVD decomposition
-    U, S, Vt = pt.linalg.svd(pt.matmul(pt.transpose(xyz_ref - t_ref, 1, 2), xyz - t))
-
-    # reflection matrix
-    Z = pt.zeros(U.shape, device=xyz.device) + pt.eye(U.shape[1], U.shape[2], device=xyz.device).unsqueeze(0)
-    Z[:, -1, -1] = pt.linalg.det(U) * pt.linalg.det(Vt)
-
-    R = pt.matmul(pt.transpose(Vt, 1, 2), pt.matmul(Z, pt.transpose(U, 1, 2)))
-
-    return xyz_ref - t_ref, pt.matmul(xyz - t, R)
+from .geometry import superpose_many, superpose
 
 
-def compute_rmsd(xyz0, xyz1):
+def compute_rmsd_all(xyz0, xyz1):
     # superpose
-    xyz1, xyz0 = superpose(xyz0.view(1, -1, 3), xyz1.view(1, -1, 3))
+    xyz1, xyz0 = superpose_many(xyz0.view(1, -1, 3), xyz1.view(1, -1, 3))
 
     # compute rmsd
     rmsd = pt.sqrt(pt.mean(pt.sum(pt.square(xyz0 - xyz1), dim=2)))
 
     return rmsd
+
+
+def compute_rmsd(X0, X1):
+    # superpose
+    X1 = superpose(X0, X1)
+
+    # compute rmsd
+    rmsd = pt.sqrt(pt.mean(pt.sum(pt.square(X0 - X1), dim=1)))
+
+    return rmsd
+
+
+def compute_lDDT(X, X0, r_thr=[0.5, 1.0, 2.0, 4.0], R0=15.0):
+    # compute distance matrices
+    D = pt.norm(X.unsqueeze(0) - X.unsqueeze(1), dim=2)
+    D0 = pt.norm(X0.unsqueeze(0) - X0.unsqueeze(1), dim=2)
+
+    # thresholds
+    r_thr = pt.tensor(r_thr, device=D.device)
+
+    # local selection mask
+    M = ((D0 < R0) & (D0 > 0.0)).float()
+
+    # compute score Local Distance Difference Test
+    DD = (pt.abs(D0 - D).unsqueeze(0) < r_thr.view(-1, 1, 1)).float()
+    lDD = pt.sum(DD * M.unsqueeze(0), dim=2) / pt.sum(M, dim=1).unsqueeze(0)
+    lDDT = 1e2 * pt.mean(lDD, dim=0)
+
+    return lDDT
 
 
 def angle(p1, p2, p3):

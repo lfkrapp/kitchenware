@@ -1,19 +1,9 @@
 import numpy as np
 import torch as pt
 
-from .dev import Structure
+from .dtype import Structure, StructureData
 from .standard_encoding import std_elements, std_names, std_resnames
-from .structure import chain_name_to_index
-from .geometry import secondary_structure
-
-
-# prepare back mapping
-elements_enum = np.concatenate([std_elements, [b"X"]])
-names_enum = np.concatenate([std_names, [b"UNK"]])
-resnames_enum = np.concatenate([std_resnames, [b"UNX"]])
-
-# prepare config summary
-config_encoding = {"std_elements": std_elements, "std_resnames": std_resnames, "std_names": std_names}
+from .metrics import secondary_structure
 
 
 def onehot(x, v):
@@ -30,7 +20,9 @@ def encode_structure(structure: Structure, device=pt.device("cpu")):
     Mr = (resids.unsqueeze(1) == pt.unique(resids).unsqueeze(0)).float()
 
     # atom to chain mapping
-    cids = pt.from_numpy(chain_name_to_index(structure)).to(device)
+    cids = pt.from_numpy(
+        np.where(structure.chain_names.reshape(-1, 1) == np.unique(structure.chain_names).reshape(1, -1))[1]
+    ).to(device)
     Mc = (cids.unsqueeze(1) == pt.unique(cids).unsqueeze(0)).float()
 
     # charge features
@@ -38,38 +30,82 @@ def encode_structure(structure: Structure, device=pt.device("cpu")):
     qr = pt.from_numpy(onehot(structure.resnames, std_resnames).astype(np.float32)).to(device)
     qn = pt.from_numpy(onehot(structure.names, std_names).astype(np.float32)).to(device)
 
-    return X, qe, qr, qn, Mr, Mc
+    return StructureData(X=X, qe=qe, qr=qr, qn=qn, Mr=Mr, Mc=Mc)
 
 
-def extract_secondary_structure_map(X, qe, qn, Mr):
-    # assign secondary structures
-    m_ca = (qn[:, 0] > 0.5) & (qe[:, 0] > 0.5)
-    ss = secondary_structure(X[m_ca])
+def encode_secondary_structure(data: StructureData) -> tuple[pt.Tensor, pt.Tensor]:
+    # compute secondary structure from carbon-alpha coordinates
+    m_ca = (data.qn[:, 0] > 0.5) & pt.any(data.qr[:, :20] > 0.5, dim=1)
+    ca_xyz = data.X[m_ca]
+    if ca_xyz.shape[0] < 5:
+        qs = pt.zeros((data.Mr.shape[1], 4), device=m_ca.device)
+        qs[:, 3] = 1.0
+    else:
+        # compute secondary structure
+        ss = secondary_structure(data.X[m_ca])
 
-    # indices of secondary structure segments
-    ids_ss_seg = pt.cat([pt.zeros(1, device=ss.device, dtype=ss.dtype), pt.cumsum(pt.abs(pt.diff(ss)), dim=0)])
+        # encode secondary structure feature
+        qs = pt.zeros((data.Mr.shape[1], 4), device=ss.device)
+        m_aa = pt.sum(data.Mr[m_ca], dim=0) > 0.5
+        qs[m_aa, ss] = 1.0
+        qs[~m_aa, 3] = 1.0
 
-    # construct mapping matrix at residue level and reshape at atom level
-    Ms = pt.zeros((Mr.shape[1], int(ids_ss_seg[-1].item()) + 1), dtype=pt.float32)
-    Ms[pt.where(Mr[m_ca] > 0.5)[0], ids_ss_seg] = 1.0
-    Ms = pt.matmul(Mr, Ms)
+    # mapping between atoms and seconary structure segement
+    sids = pt.cumsum(
+        pt.cat([pt.tensor([0], dtype=pt.long, device=qs.device), pt.max(pt.diff(qs.long(), dim=0), dim=1)[0]]), 0
+    )
+    Ms = (sids.unsqueeze(1) == pt.unique(sids).unsqueeze(0)).float()
 
-    return Ms
+    # broadcast to atom level
+    qs = pt.matmul(data.Mr, qs)
+    Ms = pt.matmul(data.Mr, Ms)
+
+    return qs, Ms
 
 
-def extract_topology(X, num_nn):
-    # compute displacement vectors
-    R = X.unsqueeze(0) - X.unsqueeze(1)
-    # compute distance matrix
-    D = pt.norm(R, dim=2)
-    # mask distances
-    D = D + 2.0 * pt.max(D) * (D < 1e-2).float()
-    # normalize displacement vectors
-    R = R / D.unsqueeze(2)
+def remove_clash(data: StructureData, d_thr=0.6):
+    # compute distance matrix and mask upper to keep first instance of atom with clash
+    D = pt.norm(data.X.unsqueeze(0) - data.X.unsqueeze(1), dim=2)
+    D = D + pt.triu(pt.ones_like(D)) * pt.max(D) * 2.0
 
-    # find nearest neighbors
-    knn = min(num_nn, D.shape[0])
-    D_topk, ids_topk = pt.topk(D, knn, dim=1, largest=False)
-    R_topk = pt.gather(R, 1, ids_topk.unsqueeze(2).repeat((1, 1, X.shape[1])))
+    # detect atom clashing using distance threshold
+    m_clash = pt.any(D < d_thr, dim=1)
 
-    return ids_topk, D_topk, R_topk, D, R
+    # extend to whole molecule
+    m_clash_ext = pt.sum(data.Mr[:, pt.sum(data.Mr[m_clash], dim=0) > 0.5], dim=1) > 0.5
+
+    return data[~m_clash_ext]
+
+
+def data_to_structure(data: StructureData) -> Structure:
+    # elements
+    elements_enum = np.concatenate([std_elements, [b"X"]])
+    elements = elements_enum[np.where(data.qe.cpu().numpy())[1]]
+
+    # names
+    names_enum = np.concatenate([std_names, [b"UNK"]])
+    names = names_enum[np.where(data.qn.cpu().numpy())[1]]
+
+    # resnames
+    resnames_enum = np.concatenate([std_resnames, [b"UNX"]])
+    resnames = resnames_enum[np.where(data.qr.cpu().numpy())[1]]
+
+    # resids
+    ids0, ids1 = np.where(data.Mr.cpu().numpy() > 0.5)
+    resids = np.zeros(data.Mr.shape[0], dtype=np.int32)
+    resids[ids0] = ids1 + 1
+
+    # chains
+    ids0, ids1 = np.where(data.Mc.cpu().numpy() > 0.5)
+    cids = np.zeros(data.Mc.shape[0], dtype=np.int64)
+    cids[ids0] = ids1 + 1
+
+    # pack subunit struct
+    return Structure(
+        xyz=data.X.cpu().numpy(),
+        names=names,
+        elements=elements,
+        resnames=resnames,
+        resids=resids,
+        chain_names=cids.astype(str),
+    )

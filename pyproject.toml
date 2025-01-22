@@ -23,5 +23,10 @@ license = { file = "LICENSE.md" }
 Homepage = "https://github.com/lfkrapp/kitchenware"
 Issues = "https://github.com/lfkrapp/kitchenware/issues"
 
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+include = ["kitchenware"]
+
 [tool.ruff]
 line-length = 120
