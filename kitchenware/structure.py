@@ -1,9 +1,7 @@
 import numpy as np
-import torch as pt
 
 from .dtype import Structure
 from .standard_encoding import std_aminoacids, std_backbone, res3to1
-from .geometry import locate_contacts
 
 
 def remove_water(structure: Structure) -> Structure:
@@ -33,6 +31,12 @@ def split_by_chain(structure: Structure) -> dict[str, Structure]:
         chains[ucnames[i].item()] = chain
 
     return chains
+
+
+def concatenate(structures: list[Structure]) -> Structure:
+    return Structure(
+        **{key: np.concatenate([getattr(structure, key) for structure in structures]) for key in structures[0]}
+    )
 
 
 def concatenate_chains(subunits: dict[str, Structure]) -> Structure:

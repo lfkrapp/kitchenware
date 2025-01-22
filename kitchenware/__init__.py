@@ -61,6 +61,7 @@ from .standard_template import (
     std_templates,
 )
 from .structure import (
+    concatenate,
     concatenate_chains,
     extract_backbone,
     remove_water,
@@ -70,7 +71,7 @@ from .structure import (
 )
 from .structure_io import (
     StructuresDataset,
-    read_structure,
+    load_structure,
     save_pdb,
     save_traj_pdb,
     subunit_to_pdb_str,
@@ -85,6 +86,7 @@ __all__ = [
     "compute_lDDT",
     "compute_rmsd",
     "compute_rmsd_all",
+    "concatenate",
     "concatenate_chains",
     "connected_distance_matrix",
     "connected_paths",
@@ -105,10 +107,10 @@ __all__ = [
     "follow_rabbits",
     "load_data",
     "load_sparse_mask",
+    "load_structure",
     "mask_diagonal",
     "onehot",
     "read_map",
-    "read_structure",
     "remove_clash",
     "remove_water",
     "res1to3",

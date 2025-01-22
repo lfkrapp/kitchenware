@@ -1,6 +1,6 @@
 [project]
 name = "kitchenware"
-version = "0.1.0"
+version = "0.1.1"
 description = "Utility tools to load and process biomolecular data."
 authors = [
     { name = "Lucien Krapp", email = "lucienkrapp@gmail.com" }
