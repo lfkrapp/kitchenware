@@ -7,7 +7,7 @@ from .structure import split_by_chain
 from .standard_encoding import std_resnames
 
 
-def read_structure(filepath: str, rm_wat=False, rm_hs=True) -> Structure:
+def load_structure(filepath: str, rm_wat=False, rm_hs=True) -> Structure:
     # use gemmi to parse file
     doc = gemmi.read_structure(filepath)
 
@@ -155,7 +155,7 @@ class StructuresDataset(pt.utils.data.Dataset):
 
         # parse pdb
         try:
-            structure = read_structure(pdb_filepath)
+            structure = load_structure(pdb_filepath)
             return structure, pdb_filepath
 
         except Exception as e:
