@@ -1,6 +1,7 @@
 import numpy as np
 import torch as pt
 import numpy.typing as npt
+from typing import Generator
 from dataclasses import dataclass, fields
 
 
@@ -51,6 +52,6 @@ class StructureData:
             Mc=self.Mc[idx][:, pt.sum(self.Mc[idx], dim=0) > 0.5],
         )
 
-    # def __iter__(self):
-    #     for field in fields(self):
-    #         yield getattr(self, field.name)
+    def __iter__(self) -> Generator[pt.Tensor, None, None]:
+        for field in fields(self):
+            yield getattr(self, field.name)

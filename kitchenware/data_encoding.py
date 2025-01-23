@@ -63,7 +63,7 @@ def encode_secondary_structure(data: StructureData) -> tuple[pt.Tensor, pt.Tenso
     return qs, Ms
 
 
-def remove_clash(data: StructureData, d_thr=0.6):
+def remove_clash(data: StructureData, d_thr=0.75):
     # compute distance matrix and mask upper to keep first instance of atom with clash
     D = pt.norm(data.X.unsqueeze(0) - data.X.unsqueeze(1), dim=2)
     D = D + pt.triu(pt.ones_like(D)) * pt.max(D) * 2.0
