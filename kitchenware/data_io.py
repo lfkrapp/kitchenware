@@ -1,3 +1,4 @@
+import io
 import numpy as np
 import torch as pt
 
@@ -41,3 +42,31 @@ def load_data(hgrp, keys=None):
         attrs[key] = hgrp.attrs[key]
 
     return data, attrs
+
+
+def serialize_tensor(x: pt.Tensor) -> bytes:
+    # convert to bytes
+    buffer = io.BytesIO()
+    pt.save(x.cpu(), buffer)
+
+    return buffer.getvalue()
+
+
+def deserialize_tensor(buffer: bytes) -> pt.Tensor:
+    return pt.load(io.BytesIO(buffer), weights_only=True)
+
+
+def encode_sparse_mask(M: pt.Tensor) -> pt.Tensor:
+    return pt.cat(
+        [
+            pt.tensor([M.shape]),
+            pt.stack(pt.where(M.cpu().bool()), dim=1),
+        ],
+        dim=0,
+    ).short()
+
+
+def decode_sparse_mask(mids):
+    M = pt.zeros(tuple(mids[0].long()), dtype=pt.float)
+    M.scatter_(1, mids[1:, 1:].long(), 1.0)
+    return M

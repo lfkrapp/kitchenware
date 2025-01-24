@@ -154,10 +154,5 @@ class StructuresDataset(pt.utils.data.Dataset):
         pdb_filepath = self.pdb_filepaths[i]
 
         # parse pdb
-        try:
-            structure = load_structure(pdb_filepath)
-            return structure, pdb_filepath
-
-        except Exception as e:
-            print(f"ReadError: {pdb_filepath}: {e}")
-            return None, pdb_filepath
+        structure = load_structure(pdb_filepath)
+        return structure, pdb_filepath

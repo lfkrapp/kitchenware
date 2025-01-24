@@ -6,9 +6,13 @@ from .data_encoding import (
     remove_clash,
 )
 from .data_io import (
+    decode_sparse_mask,
+    deserialize_tensor,
+    encode_sparse_mask,
     load_data,
     load_sparse_mask,
     save_data,
+    serialize_tensor,
 )
 from .dtype import (
     Structure,
@@ -92,8 +96,11 @@ __all__ = [
     "connected_paths",
     "crop_map",
     "data_to_structure",
+    "decode_sparse_mask",
+    "deserialize_tensor",
     "dihedral",
     "encode_secondary_structure",
+    "encode_sparse_mask",
     "encode_structure",
     "extract_backbone",
     "extract_connectivity",
@@ -120,6 +127,7 @@ __all__ = [
     "save_pdb",
     "save_traj_pdb",
     "secondary_structure",
+    "serialize_tensor",
     "split_by_chain",
     "split_by_residue",
     "std_aminoacids",
