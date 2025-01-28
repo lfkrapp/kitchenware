@@ -41,6 +41,23 @@ def compute_lDDT(X, X0, r_thr=[0.5, 1.0, 2.0, 4.0], R0=15.0):
 
     return lDDT
 
+def compute_gdt_ts(xyz0, xyz1, r_thr=[1.0, 2.0, 4.0, 8.0]):
+    # superpose
+    xyz1_aligned, xyz0_aligned = superpose(xyz0.view(1, -1, 3), xyz1.view(1, -1, 3))
+    
+    # compute pairwise distances 
+    distances = pt.sqrt(pt.sum((xyz0_aligned - xyz1_aligned) ** 2, dim=2)).squeeze()
+   
+    # percentage of atoms within each threshold
+    scores = []
+    for threshold in r_thr:
+        score = pt.sum(distances < threshold).item() / distances.shape[0] * 100
+        scores.append(score)
+    
+    # compute (Global Distance Test - Total Score) as the average of scores at each threshold
+    gdt_ts = sum(scores) / len(r_thr)
+    
+    return gdt_ts
 
 def angle(p1, p2, p3):
     # displacement vectors
