@@ -32,12 +32,14 @@ class StructureData:
     Mc: pt.Tensor
 
     def to(self, device):
-        self.X.to(device)
-        self.qe.to(device)
-        self.qr.to(device)
-        self.qn.to(device)
-        self.Mr.to(device)
-        self.Mc.to(device)
+        return StructureData(
+            X=self.X.to(device),
+            qe=self.qe.to(device),
+            qr=self.qr.to(device),
+            qn=self.qn.to(device),
+            Mr=self.Mr.to(device),
+            Mc=self.Mc.to(device),
+        )
 
     def cpu(self):
         self.to(pt.device("cpu"))

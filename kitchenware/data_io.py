@@ -67,6 +67,6 @@ def encode_sparse_mask(M: pt.Tensor) -> pt.Tensor:
 
 
 def decode_sparse_mask(mids):
-    M = pt.zeros(tuple(mids[0].long()), dtype=pt.float)
-    M.scatter_(1, mids[1:, 1:].long(), 1.0)
+    M = pt.zeros(mids[0, 0], mids[0, 1], dtype=pt.float)
+    M[mids[1:, 0].long(), mids[1:, 1].long()] = 1.0
     return M

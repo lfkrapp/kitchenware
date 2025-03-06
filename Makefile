@@ -1,5 +1,8 @@
 .PHONY: build publish
 
+check:
+	deptry kitchenware
+
 init:
 	mkinit kitchenware --relative --nomods > kitchenware/__init__.py
 

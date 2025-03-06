@@ -1,6 +1,6 @@
 [project]
 name = "kitchenware"
-version = "0.2.0"
+version = "0.2.1"
 description = "Utility tools to load and process biomolecular data."
 authors = [
     { name = "Lucien Krapp", email = "lucienkrapp@gmail.com" }
@@ -11,10 +11,6 @@ dependencies = [
     "gemmi>=0.7.0",
     "mrcfile>=1.5.3",
     "numpy>=2.2.1",
-    "pandas>=2.2.3",
-    "rdkit>=2024.9.4",
-    "scikit-learn>=1.6.1",
-    "scipy>=1.15.1",
     "torch>=2.5.1",
 ]
 license = { file = "LICENSE.md" }
