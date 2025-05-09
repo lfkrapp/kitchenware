@@ -18,10 +18,11 @@ def extract_geometry(Xi: pt.Tensor, Xj: pt.Tensor):
     return D, R
 
 
-def extract_neighborhood(D, R, max_nn):
+def extract_neighborhood(D, R, max_nn, mask_self=True):
     # find geometry nearest neighbors
     num_nn = min(D.shape[0], max_nn)
-    _, ids_nn = pt.topk(mask_diagonal(D), num_nn, dim=1, largest=False)
+    Dm = mask_diagonal(D) if mask_self else D
+    _, ids_nn = pt.topk(Dm, num_nn, dim=1, largest=False)
     D_nn = pt.gather(D, 1, ids_nn)
     R_nn = pt.gather(R, 1, ids_nn.unsqueeze(2).repeat_interleave(R.shape[2], dim=2))
 
@@ -37,9 +38,10 @@ def extract_connectivity(qe, D, alpha=1.2):
     ).float()
 
 
-def extract_neighborhood_with_edges(D, R, C, max_nn):
+def extract_neighborhood_with_edges(D, R, C, max_nn, mask_self=True):
     # virtual distances with bonded atoms at -1 to ensure in topk
-    Dv = -C + (1.0 - C) * mask_diagonal(D)
+    Dm = mask_diagonal(D) if mask_self else D
+    Dv = -C + (1.0 - C) * Dm
 
     # find nearest neighbors with edges
     num_nn = min(D.shape[0], max_nn)
@@ -73,32 +75,32 @@ def connected_distance_matrix(C):
     return L
 
 
-def follow_rabbit(M, i):
+def follow_rabbit(C: pt.Tensor, i: int) -> list[int]:
     ids_checked = {i}
-    ids_checking = set(np.where(M[i])[0])
+    ids_checking = {int(i) for i in pt.where(C[i])[0]}
     while ids_checking:
         for j in ids_checking.copy():
             ids_checking.remove(j)
-            ids_checking.update(set([i for i in np.where(M[j])[0] if i not in ids_checked]))
+            ids_checking.update({int(i) for i in pt.where(C[j])[0] if int(i) not in ids_checked})
             ids_checked.add(j)
 
     return list(ids_checked)
 
 
-def follow_rabbits(M):
+def follow_rabbits(C: pt.Tensor) -> list[pt.Tensor]:
     i = 0
     ids_checked = []
     ids_clust = []
-    while len(ids_checked) < M.shape[0]:
-        ids_connect = follow_rabbit(M, i)
+    while len(ids_checked) < C.shape[0]:
+        ids_connect = follow_rabbit(C, i)
         ids_checked.extend(ids_connect)
         ids_clust.append(ids_connect)
-        for j in range(i, M.shape[0]):
+        for j in range(i, C.shape[0]):
             if j not in ids_checked:
                 i = j
                 break
 
-    return ids_clust
+    return [pt.tensor(ids_clust[i], dtype=pt.long, device=C.device) for i in range(len(ids_clust))]
 
 
 def find_bonded_graph_neighborhood(L, D, num_bond):
@@ -212,8 +214,8 @@ def superpose(X0, X):
 
 def superpose_many(X0, X):
     # weighted coordinate centering
-    t0 = pt.sum(X0, dim=1).unsqueeze(1)
-    t = pt.sum(X, dim=1).unsqueeze(1)
+    t0 = pt.mean(X0, dim=1).unsqueeze(1)
+    t = pt.mean(X, dim=1).unsqueeze(1)
     X0c = X0 - t0
     Xc = X - t
 

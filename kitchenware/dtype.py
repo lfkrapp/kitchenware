@@ -31,19 +31,6 @@ class StructureData:
     Mr: pt.Tensor
     Mc: pt.Tensor
 
-    def to(self, device):
-        return StructureData(
-            X=self.X.to(device),
-            qe=self.qe.to(device),
-            qr=self.qr.to(device),
-            qn=self.qn.to(device),
-            Mr=self.Mr.to(device),
-            Mc=self.Mc.to(device),
-        )
-
-    def cpu(self):
-        self.to(pt.device("cpu"))
-
     def __getitem__(self, idx):
         return StructureData(
             X=self.X[idx],

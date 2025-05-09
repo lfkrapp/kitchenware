@@ -7,7 +7,7 @@ from .structure import split_by_chain
 from .standard_encoding import std_resnames
 
 
-def load_structure(filepath: str, rm_wat=False, rm_hs=True) -> Structure:
+def load_structure(filepath: str, rm_wat=False, rm_hs=True, rm_unk=True) -> Structure:
     # use gemmi to parse file
     doc = gemmi.read_structure(filepath)
 
@@ -26,6 +26,10 @@ def load_structure(filepath: str, rm_wat=False, rm_hs=True) -> Structure:
 
             # skip (heavy) water
             if rm_wat and ((a.residue.name == "HOH") or (a.residue.name == "DOD")):
+                continue
+
+            # skip unknown molecules
+            if rm_unk and (a.residue.name in ["UNK", "UPL", "UNL", "UNX", "DN"]):
                 continue
 
             # altloc check (keep first encountered)
@@ -137,14 +141,15 @@ def save_traj_pdb(structure: Structure, filepath):
 
 
 class StructuresDataset(pt.utils.data.Dataset):
-    def __init__(self, pdb_filepaths, rm_wat=False, rm_clash=False):
+    def __init__(self, pdb_filepaths, rm_wat=False, rm_hs=True, rm_unk=True):
         super(StructuresDataset).__init__()
         # store dataset filepath
         self.pdb_filepaths = pdb_filepaths
 
         # store flag
         self.rm_wat = rm_wat
-        self.rm_clash = rm_clash
+        self.rm_hs = rm_hs
+        self.rm_unk = rm_unk
 
     def __len__(self):
         return len(self.pdb_filepaths)
@@ -154,5 +159,5 @@ class StructuresDataset(pt.utils.data.Dataset):
         pdb_filepath = self.pdb_filepaths[i]
 
         # parse pdb
-        structure = load_structure(pdb_filepath)
+        structure = load_structure(pdb_filepath, rm_wat=self.rm_wat, rm_hs=self.rm_hs, rm_unk=self.rm_unk)
         return structure, pdb_filepath

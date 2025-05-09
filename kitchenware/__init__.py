@@ -2,8 +2,8 @@ from .data_encoding import (
     data_to_structure,
     encode_secondary_structure,
     encode_structure,
+    find_clash,
     onehot,
-    remove_clash,
 )
 from .data_io import (
     decode_sparse_mask,
@@ -43,6 +43,7 @@ from .maps import (
 )
 from .metrics import (
     angle,
+    compute_gdt_ts,
     compute_lDDT,
     compute_rmsd,
     compute_rmsd_all,
@@ -87,6 +88,7 @@ __all__ = [
     "StructuresDataset",
     "angle",
     "categ_to_resnames",
+    "compute_gdt_ts",
     "compute_lDDT",
     "compute_rmsd",
     "compute_rmsd_all",
@@ -109,6 +111,7 @@ __all__ = [
     "extract_neighborhood",
     "extract_neighborhood_with_edges",
     "find_bonded_graph_neighborhood",
+    "find_clash",
     "find_contacts",
     "follow_rabbit",
     "follow_rabbits",
@@ -118,7 +121,6 @@ __all__ = [
     "mask_diagonal",
     "onehot",
     "read_map",
-    "remove_clash",
     "remove_water",
     "res1to3",
     "res3to1",

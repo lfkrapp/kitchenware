@@ -63,7 +63,7 @@ def encode_secondary_structure(data: StructureData) -> tuple[pt.Tensor, pt.Tenso
     return qs, Ms
 
 
-def remove_clash(data: StructureData, d_thr=0.75):
+def find_clash(data: StructureData, d_thr=0.75):
     # compute distance matrix and mask upper to keep first instance of atom with clash
     D = pt.norm(data.X.unsqueeze(0) - data.X.unsqueeze(1), dim=2)
     D = D + pt.triu(pt.ones_like(D)) * pt.max(D) * 2.0
@@ -74,20 +74,20 @@ def remove_clash(data: StructureData, d_thr=0.75):
     # extend to whole molecule
     m_clash_ext = pt.sum(data.Mr[:, pt.sum(data.Mr[m_clash], dim=0) > 0.5], dim=1) > 0.5
 
-    return data[~m_clash_ext]
+    return m_clash_ext
 
 
 def data_to_structure(data: StructureData) -> Structure:
     # elements
-    elements_enum = np.concatenate([std_elements, [b"X"]])
+    elements_enum = np.concatenate([std_elements, ["X"]])
     elements = elements_enum[np.where(data.qe.cpu().numpy())[1]]
 
     # names
-    names_enum = np.concatenate([std_names, [b"UNK"]])
+    names_enum = np.concatenate([std_names, ["UNK"]])
     names = names_enum[np.where(data.qn.cpu().numpy())[1]]
 
     # resnames
-    resnames_enum = np.concatenate([std_resnames, [b"UNX"]])
+    resnames_enum = np.concatenate([std_resnames, ["UNX"]])
     resnames = resnames_enum[np.where(data.qr.cpu().numpy())[1]]
 
     # resids
